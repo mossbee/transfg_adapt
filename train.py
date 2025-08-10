@@ -65,7 +65,27 @@ def calculate_verification_metrics(similarities, labels):
         'thresholds': thresholds
     }
 
-
+def verification_loss(emb1, emb2, labels, margin=0.4):
+    """
+    Compute verification loss using contrastive learning approach
+    Args:
+        emb1, emb2: embeddings of image pairs
+        labels: 1 for same person, 0 for different person
+        margin: margin for contrastive loss
+    """
+    # Normalize embeddings
+    emb1 = torch.nn.functional.normalize(emb1, p=2, dim=1)
+    emb2 = torch.nn.functional.normalize(emb2, p=2, dim=1)
+    
+    # Calculate cosine similarity
+    cos_sim = torch.sum(emb1 * emb2, dim=1)
+    
+    # Contrastive loss: minimize distance for same pairs, maximize for different pairs
+    pos_loss = (1 - cos_sim) * labels  # For same person (label=1), minimize distance
+    neg_loss = torch.clamp(cos_sim - margin, min=0) * (1 - labels)  # For different person (label=0), maximize distance
+    
+    loss = pos_loss + neg_loss
+    return loss.mean(), cos_sim
 
 def save_model(args, model):
     model_to_save = model.module if hasattr(model, 'module') else model
@@ -150,9 +170,6 @@ def train_verification(args, model):
     global_step, best_acc = 0, 0
     start_time = time.time()
     
-    # Verification loss function
-    verification_loss = torch.nn.BCEWithLogitsLoss()
-    
     while True:
         model.train()
         epoch_iterator = tqdm(train_loader,
@@ -168,18 +185,11 @@ def train_verification(args, model):
             emb1 = model(img1, return_embedding=True)
             emb2 = model(img2, return_embedding=True)
             
-            # Calculate cosine similarity
-            cos_sim = torch.nn.functional.cosine_similarity(emb1, emb2, dim=1)
+            # Calculate verification loss and similarity
+            loss, cos_sim = verification_loss(emb1, emb2, labels, margin=args.margin)
             
-            # Convert similarity to binary prediction (threshold at 0)
-            logits = cos_sim.unsqueeze(1)  # Add dimension for BCE loss
-            
-            # Calculate loss
-            loss = verification_loss(logits, labels.unsqueeze(1))
-            loss = loss.mean()
-
-            # Convert to binary predictions
-            preds = (cos_sim > 0).long()
+            # Convert similarity to binary prediction using threshold
+            preds = (cos_sim > args.similarity_threshold).long()
 
             if len(all_preds) == 0:
                 all_preds.append(preds.detach().cpu().numpy())
@@ -256,7 +266,6 @@ def valid_verification(args, model, writer, test_loader, global_step):
                           desc="Validating... (loss=X.X)",
                           bar_format="{l_bar}{r_bar}",
                           dynamic_ncols=True)
-    verification_loss = torch.nn.BCEWithLogitsLoss()
     
     for step, batch in enumerate(epoch_iterator):
         batch = tuple(t.to(args.device) for t in batch)
@@ -266,14 +275,8 @@ def valid_verification(args, model, writer, test_loader, global_step):
             emb1 = model(img1, return_embedding=True)
             emb2 = model(img2, return_embedding=True)
             
-            # Calculate cosine similarity
-            cos_sim = torch.nn.functional.cosine_similarity(emb1, emb2, dim=1)
-            
-            # Convert similarity to binary prediction
-            logits = cos_sim.unsqueeze(1)
-            
-            eval_loss = verification_loss(logits, labels.unsqueeze(1))
-            eval_loss = eval_loss.mean()
+            # Calculate verification loss and similarity
+            eval_loss, cos_sim = verification_loss(emb1, emb2, labels, margin=args.margin)
             eval_losses.update(eval_loss.item())
 
         if len(all_similarities) == 0:
@@ -349,6 +352,11 @@ def main():
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm.")
 
+    # Verification-specific parameters
+    parser.add_argument("--margin", default=0.4, type=float,
+                        help="Margin for contrastive loss in verification task.")
+    parser.add_argument("--similarity_threshold", default=0.0, type=float,
+                        help="Threshold for similarity-based prediction during training.")
 
     parser.add_argument('--seed', type=int, default=42,
                         help="random seed for initialization")

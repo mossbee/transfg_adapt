@@ -25,9 +25,25 @@ def get_loader(args):
         trainset = CUB(root=args.data_root, is_train=True, transform=train_transform)
         testset = CUB(root=args.data_root, is_train=False, transform = test_transform)
     elif args.dataset == 'NDTWIN':
-        img_transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        trainset = NDTWIN(root=args.data_root, pair_txt='train_pairs_dataset.txt', transform=img_transform)
-        testset = NDTWIN(root=args.data_root, pair_txt='test_pairs_dataset.txt', transform=img_transform)
+        # Improved preprocessing for face verification
+        train_transform = transforms.Compose([
+            transforms.Resize((args.img_size + 32, args.img_size + 32)),  # Slightly larger for random crop
+            transforms.RandomCrop((args.img_size, args.img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            transforms.RandomRotation(degrees=10),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        
+        test_transform = transforms.Compose([
+            transforms.Resize((args.img_size, args.img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        
+        trainset = NDTWIN(root=args.data_root, pair_txt='train_pairs_dataset.txt', transform=train_transform)
+        testset = NDTWIN(root=args.data_root, pair_txt='test_pairs_dataset.txt', transform=test_transform)
 
     train_sampler = RandomSampler(trainset)
     test_sampler = SequentialSampler(testset)
