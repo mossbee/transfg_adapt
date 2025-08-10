@@ -328,9 +328,9 @@ def main():
                         help="The output directory where checkpoints will be written.")
     parser.add_argument("--img_size", default=448, type=int,
                         help="Resolution size")
-    parser.add_argument("--train_batch_size", default=16, type=int,
+    parser.add_argument("--train_batch_size", default=8, type=int,
                         help="Total batch size for training.")
-    parser.add_argument("--eval_batch_size", default=8, type=int,
+    parser.add_argument("--eval_batch_size", default=4, type=int,
                         help="Total batch size for eval.")
     parser.add_argument("--eval_every", default=100, type=int,
                         help="Run prediction on validation set every so many steps."
