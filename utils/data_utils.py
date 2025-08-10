@@ -32,7 +32,7 @@ def get_loader(args):
     elif args.dataset == 'NDTWIN':
         img_transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         trainset = NDTWIN(root=args.data_root, pair_txt='train_pairs_dataset.txt', transform=img_transform)
-        testset = NDTWIN(root=args.data_root, pair_txt='val_pairs_dataset.txt', transform=img_transform)
+        testset = NDTWIN(root=args.data_root, pair_txt='test_pairs_dataset.txt', transform=img_transform)
 
     if args.local_rank == 0:
         torch.distributed.barrier()
