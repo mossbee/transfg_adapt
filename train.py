@@ -87,14 +87,50 @@ def verification_loss(emb1, emb2, labels, margin=0.4):
     loss = pos_loss + neg_loss
     return loss.mean(), cos_sim
 
-def save_model(args, model):
+def save_model(args, model, optimizer=None, scheduler=None, global_step=0, best_acc=0):
     model_to_save = model.module if hasattr(model, 'module') else model
     model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
     checkpoint = {
         'model': model_to_save.state_dict(),
+        'global_step': global_step,
+        'best_acc': best_acc,
     }
+    if optimizer is not None:
+        checkpoint['optimizer'] = optimizer.state_dict()
+    if scheduler is not None:
+        checkpoint['scheduler'] = scheduler.state_dict()
     torch.save(checkpoint, model_checkpoint)
-    logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
+    logger.info("Saved model checkpoint to [DIR: %s] at step %d", args.output_dir, global_step)
+
+def load_checkpoint(args, model, optimizer=None, scheduler=None):
+    """Load checkpoint for resuming training"""
+    checkpoint_path = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
+    if not os.path.exists(checkpoint_path):
+        logger.info("No checkpoint found at %s, starting from scratch", checkpoint_path)
+        return 0, 0  # global_step, best_acc
+    
+    logger.info("Loading checkpoint from %s", checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=args.device)
+    
+    # Load model state
+    model.load_state_dict(checkpoint['model'])
+    
+    # Load training state
+    global_step = checkpoint.get('global_step', 0)
+    best_acc = checkpoint.get('best_acc', 0)
+    
+    # Load optimizer state if provided
+    if optimizer is not None and 'optimizer' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        logger.info("Loaded optimizer state")
+    
+    # Load scheduler state if provided
+    if scheduler is not None and 'scheduler' in checkpoint:
+        scheduler.load_state_dict(checkpoint['scheduler'])
+        logger.info("Loaded scheduler state")
+    
+    logger.info("Resumed from step %d with best accuracy %f", global_step, best_acc)
+    return global_step, best_acc
 
 def setup(args):
     # Prepare model
@@ -154,7 +190,7 @@ def train_verification(args, model):
     # Mixed precision training
     scaler = None
     if args.fp16:
-        scaler = torch.cuda.amp.GradScaler()
+        scaler = torch.amp.GradScaler('cuda')
 
     # Train!
     logger.info("***** Running verification training *****")
@@ -167,7 +203,9 @@ def train_verification(args, model):
     model.zero_grad()
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
-    global_step, best_acc = 0, 0
+    
+    # Load checkpoint if resuming training
+    global_step, best_acc = load_checkpoint(args, model, optimizer, scheduler)
     start_time = time.time()
     
     while True:
@@ -232,7 +270,7 @@ def train_verification(args, model):
                     with torch.no_grad():
                         accuracy = valid_verification(args, model, writer, test_loader, global_step)
                     if best_acc < accuracy:
-                        save_model(args, model)
+                        save_model(args, model, optimizer, scheduler, global_step, accuracy)
                         best_acc = accuracy
                     logger.info("best accuracy so far: %f" % best_acc)
                     model.train()
@@ -311,6 +349,61 @@ def valid_verification(args, model, writer, test_loader, global_step):
         
     return val_accuracy
 
+def evaluate_checkpoint(args, model, test_loader):
+    """Load checkpoint and evaluate on test set"""
+    logger.info("***** Loading checkpoint and evaluating on test set *****")
+    
+    # Load checkpoint
+    global_step, best_acc = load_checkpoint(args, model)
+    
+    if global_step == 0:
+        logger.warning("No checkpoint found, using current model state")
+    
+    # Evaluate on test set
+    model.eval()
+    all_similarities, all_labels = [], []
+    
+    with torch.no_grad():
+        for batch in tqdm(test_loader, desc="Evaluating on test set"):
+            batch = tuple(t.to(args.device) for t in batch)
+            img1, img2, labels = batch
+            
+            # Get embeddings for both images
+            emb1 = model(img1, return_embedding=True)
+            emb2 = model(img2, return_embedding=True)
+            
+            # Calculate similarity
+            emb1 = torch.nn.functional.normalize(emb1, p=2, dim=1)
+            emb2 = torch.nn.functional.normalize(emb2, p=2, dim=1)
+            cos_sim = torch.sum(emb1 * emb2, dim=1)
+            
+            if len(all_similarities) == 0:
+                all_similarities.append(cos_sim.detach().cpu())
+                all_labels.append(labels.detach().cpu())
+            else:
+                all_similarities[0] = torch.cat([all_similarities[0], cos_sim.detach().cpu()], dim=0)
+                all_labels[0] = torch.cat([all_labels[0], labels.detach().cpu()], dim=0)
+    
+    all_similarities, all_labels = all_similarities[0], all_labels[0]
+    
+    # Calculate verification metrics
+    metrics = calculate_verification_metrics(all_similarities, all_labels)
+    
+    # Calculate accuracy using EER threshold
+    preds = (all_similarities > metrics['eer_threshold']).long()
+    test_accuracy = simple_accuracy(preds.numpy(), all_labels.numpy())
+    
+    logger.info("\n" + "="*50)
+    logger.info("TEST SET EVALUATION RESULTS")
+    logger.info("="*50)
+    logger.info("Test Accuracy: %2.5f" % test_accuracy)
+    logger.info("EER: %2.5f" % metrics['eer'])
+    logger.info("ROC AUC: %2.5f" % metrics['auc'])
+    logger.info("EER Threshold: %2.5f" % metrics['eer_threshold'])
+    logger.info("="*50)
+    
+    return test_accuracy, metrics
+
 def main():
     parser = argparse.ArgumentParser()
     # Required parameters
@@ -372,6 +465,12 @@ def main():
                         help="Split method")
     parser.add_argument('--slide_step', type=int, default=12,
                         help="Slide step for overlap split")
+    
+    # Checkpoint and evaluation arguments
+    parser.add_argument('--resume', action='store_true',
+                        help="Resume training from checkpoint")
+    parser.add_argument('--evaluate', action='store_true',
+                        help="Only evaluate checkpoint on test set (no training)")
 
     args = parser.parse_args()
 
@@ -391,8 +490,16 @@ def main():
 
     # Model & Tokenizer Setup
     args, model = setup(args)
-    # Training
-    train_verification(args, model)
+    
+    # Prepare dataset
+    train_loader, test_loader = get_loader(args)
+    
+    if args.evaluate:
+        # Only evaluate checkpoint on test set
+        evaluate_checkpoint(args, model, test_loader)
+    else:
+        # Training
+        train_verification(args, model)
 
 if __name__ == "__main__":
     main()
