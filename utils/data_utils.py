@@ -27,17 +27,11 @@ def get_loader(args):
     elif args.dataset == 'NDTWIN':
         # Improved preprocessing for face verification
         train_transform = transforms.Compose([
-            transforms.Resize((args.img_size + 32, args.img_size + 32)),  # Slightly larger for random crop
-            transforms.RandomCrop((args.img_size, args.img_size)),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-            transforms.RandomRotation(degrees=10),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
         
         test_transform = transforms.Compose([
-            transforms.Resize((args.img_size, args.img_size)),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
