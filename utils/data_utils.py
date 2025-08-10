@@ -34,13 +34,15 @@ def get_loader(args):
     train_loader = DataLoader(trainset,
                               sampler=train_sampler,
                               batch_size=args.train_batch_size,
-                              num_workers=4,
+                              num_workers=2,  # Reduced for single GPU
                               drop_last=True,
-                              pin_memory=True)
+                              pin_memory=True,
+                              prefetch_factor=2)  # Added for better performance
     test_loader = DataLoader(testset,
                              sampler=test_sampler,
                              batch_size=args.eval_batch_size,
-                             num_workers=4,
-                             pin_memory=True) if testset is not None else None
+                             num_workers=2,  # Reduced for single GPU
+                             pin_memory=True,
+                             prefetch_factor=2) if testset is not None else None
 
     return train_loader, test_loader
