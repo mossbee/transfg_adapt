@@ -114,7 +114,7 @@ def load_checkpoint(args, model, optimizer=None, scheduler=None):
         return 0, 0  # global_step, best_acc
     
     logger.info("Loading checkpoint from %s", checkpoint_path)
-    checkpoint = torch.load(checkpoint_path, map_location=args.device)
+    checkpoint = torch.load(checkpoint_path, map_location=args.device, weights_only=False)
     
     # Load model state
     model.load_state_dict(checkpoint['model'])
