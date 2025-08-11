@@ -355,7 +355,7 @@ def valid_verification(args, model, writer, test_loader, global_step):
 
 def evaluate_checkpoint(args, model, eval_loader):
     """Load checkpoint and evaluate on test set"""
-    logger.info("***** Loading checkpoint and evaluating on test set *****")
+    print("***** Loading checkpoint and evaluating on test set *****")
     
     # Load checkpoint
     global_step, best_acc = load_checkpoint(args, model)
@@ -397,14 +397,14 @@ def evaluate_checkpoint(args, model, eval_loader):
     preds = (all_similarities > metrics['eer_threshold']).long()
     test_accuracy = simple_accuracy(preds.numpy(), all_labels.numpy())
     
-    logger.info("\n" + "="*50)
-    logger.info("TEST SET EVALUATION RESULTS")
-    logger.info("="*50)
-    logger.info("Test Accuracy: %2.5f" % test_accuracy)
-    logger.info("EER: %2.5f" % metrics['eer'])
-    logger.info("ROC AUC: %2.5f" % metrics['auc'])
-    logger.info("EER Threshold: %2.5f" % metrics['eer_threshold'])
-    logger.info("="*50)
+    print("\n" + "="*50)
+    print("TEST SET EVALUATION RESULTS")
+    print("="*50)
+    print("Test Accuracy: %2.5f" % test_accuracy)
+    print("EER: %2.5f" % metrics['eer'])
+    print("ROC AUC: %2.5f" % metrics['auc'])
+    print("EER Threshold: %2.5f" % metrics['eer_threshold'])
+    print("="*50)
     
     return test_accuracy, metrics
 
