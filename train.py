@@ -104,7 +104,10 @@ def save_model(args, model, optimizer=None, scheduler=None, global_step=0, best_
 
 def load_checkpoint(args, model, optimizer=None, scheduler=None):
     """Load checkpoint for resuming training"""
-    checkpoint_path = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
+    if args.checkpoint_path:
+        checkpoint_path = args.checkpoint_path
+    else:
+        checkpoint_path = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
     if not os.path.exists(checkpoint_path):
         logger.info("No checkpoint found at %s, starting from scratch", checkpoint_path)
         return 0, 0  # global_step, best_acc
@@ -174,7 +177,7 @@ def train_verification(args, model):
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
     # Prepare dataset
-    train_loader, test_loader = get_loader(args)
+    train_loader, test_loader, eval_loader = get_loader(args)
 
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
@@ -349,7 +352,7 @@ def valid_verification(args, model, writer, test_loader, global_step):
         
     return val_accuracy
 
-def evaluate_checkpoint(args, model, test_loader):
+def evaluate_checkpoint(args, model, eval_loader):
     """Load checkpoint and evaluate on test set"""
     logger.info("***** Loading checkpoint and evaluating on test set *****")
     
@@ -364,7 +367,7 @@ def evaluate_checkpoint(args, model, test_loader):
     all_similarities, all_labels = [], []
     
     with torch.no_grad():
-        for batch in tqdm(test_loader, desc="Evaluating on test set"):
+        for batch in tqdm(eval_loader, desc="Evaluating on test set"):
             batch = tuple(t.to(args.device) for t in batch)
             img1, img2, labels = batch
             
@@ -469,6 +472,8 @@ def main():
     # Checkpoint and evaluation arguments
     parser.add_argument('--resume', action='store_true',
                         help="Resume training from checkpoint")
+    parser.add_argument('--checkpoint_path', type=str, default=None,
+                        help="Path to checkpoint")
     parser.add_argument('--evaluate', action='store_true',
                         help="Only evaluate checkpoint on test set (no training)")
 
