@@ -108,6 +108,7 @@ def load_checkpoint(args, model, optimizer=None, scheduler=None):
         checkpoint_path = args.checkpoint_path
     else:
         checkpoint_path = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
+    
     if not os.path.exists(checkpoint_path):
         logger.info("No checkpoint found at %s, starting from scratch", checkpoint_path)
         return 0, 0  # global_step, best_acc
