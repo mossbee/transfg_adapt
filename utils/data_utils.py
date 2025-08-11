@@ -38,9 +38,18 @@ def get_loader(args):
         
         trainset = NDTWIN(root=args.data_root, pair_txt='train_pairs_dataset.txt', transform=train_transform)
         testset = NDTWIN(root=args.data_root, pair_txt='test_pairs_dataset.txt', transform=test_transform)
+        eval_set = NDTWIN(root=args.data_root, pair_txt='eval_pairs_dataset.txt', transform=test_transform)
 
     train_sampler = RandomSampler(trainset)
     test_sampler = SequentialSampler(testset)
+    # Load all eval set
+    eval_loader = DataLoader(eval_set,
+                             sampler=SequentialSampler(eval_set),
+                             batch_size=args.eval_batch_size,
+                             num_workers=2,  # Reduced for single GPU
+                             pin_memory=True,
+                             prefetch_factor=2) if eval_set is not None else None
+
     train_loader = DataLoader(trainset,
                               sampler=train_sampler,
                               batch_size=args.train_batch_size,
@@ -55,4 +64,4 @@ def get_loader(args):
                              pin_memory=True,
                              prefetch_factor=2) if testset is not None else None
 
-    return train_loader, test_loader
+    return train_loader, test_loader, eval_loader

@@ -492,11 +492,11 @@ def main():
     args, model = setup(args)
     
     # Prepare dataset
-    train_loader, test_loader = get_loader(args)
+    train_loader, test_loader, eval_loader = get_loader(args)
     
     if args.evaluate:
         # Only evaluate checkpoint on test set
-        evaluate_checkpoint(args, model, test_loader)
+        evaluate_checkpoint(args, model, eval_loader)
     else:
         # Training
         train_verification(args, model)
